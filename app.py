@@ -4,18 +4,51 @@ import os
 import streamlit as st
 from agent.react_agent import ReactAgent
 from utils.path_tool import get_abs_path
+from rag.vector_store import VectorStoreService
 
 # ---------- 页面配置 ----------
 st.set_page_config(
-    page_title='企业智慧转型智能助手',
-    page_icon='🏛️',
+    page_title='问答助手',
+    page_icon='🤖',
     layout='wide',
 )
 
 # ---------- 侧边栏 ----------
 with st.sidebar:
-    st.title('🏛️ 企业智慧转型助手')
+    st.title('🤖 问答助手')
     st.caption('基于 TOGAF 理论 · 企业架构治理')
+    st.divider()
+
+    # ---------- 文件上传 ----------
+    st.subheader('📤 上传知识库文件')
+    uploaded_file = st.file_uploader(
+        '选择文件上传到知识库',
+        type=['txt', 'pdf'],
+        accept_multiple_files=False,
+        help='支持 .txt 和 .pdf 格式的文件，上传后将自动加载到向量知识库',
+    )
+
+    if uploaded_file is not None:
+        data_path = get_abs_path('data')
+        save_path = os.path.join(data_path, uploaded_file.name)
+
+        # 保存文件到 data 目录
+        with open(save_path, 'wb') as f:
+            f.write(uploaded_file.getbuffer())
+
+        st.success(f'✅ {uploaded_file.name} 上传成功！')
+
+        # 自动加载到向量知识库
+        with st.spinner('🔄 正在将文件加载到向量知识库...'):
+            try:
+                vs = VectorStoreService()
+                vs.load_document()
+                st.success('✅ 已加载到向量知识库')
+            except Exception as e:
+                st.error(f'加载到向量知识库失败: {str(e)}')
+
+        st.rerun()
+
     st.divider()
 
     # 知识库信息
@@ -56,7 +89,7 @@ with st.sidebar:
     st.caption('💡 提示：问题涉及产品功能或业务流程时，会自动检索知识库')
 
 # ---------- 主界面 ----------
-st.title('🏛️ 企业智慧转型智能助手')
+st.title('🤖 问答助手')
 st.caption('基于 TOGAF 理论，回答企业架构治理工作台的产品功能、业务流程和 TOGAF 方法论相关问题')
 st.divider()
 
