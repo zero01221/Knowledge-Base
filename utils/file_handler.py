@@ -1,7 +1,7 @@
-import os,hashlib
+import os, hashlib, base64, mimetypes
 from utils.logger_handler import logger
 from langchain_core.documents import Document
-from langchain_community.document_loaders import PyPDFLoader,TextLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 
 # 获取文件的md5的十六进制字符串
 def get_file_md5_hex(filepath: str):
@@ -45,3 +45,19 @@ def pdf_loader(filepath: str,passwd=None) -> list[Document]:
 
 def txt_loader(filepath: str) -> list[Document]:
     return TextLoader(filepath,encoding='utf-8').load()
+
+
+def file_to_data_uri(filepath: str) -> str:
+    """将文件读取并转换为 base64 Data URI，用于浏览器原生打开。
+
+    自动识别 MIME 类型，支持 txt/pdf/md/docx/pptx/xlsx 等任意格式。
+    """
+    mime_type, _ = mimetypes.guess_type(filepath)
+    if mime_type is None:
+        mime_type = 'application/octet-stream'
+
+    with open(filepath, 'rb') as f:
+        content = f.read()
+
+    b64 = base64.b64encode(content).decode('utf-8')
+    return f'data:{mime_type};base64,{b64}'

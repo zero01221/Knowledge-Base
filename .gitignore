@@ -49,6 +49,9 @@ chroma_db/
 # MD5 store (可以重新生成)
 md5.txt
 
+# Conversations (用户对话历史)
+conversations/
+
 # OS
 .DS_Store
 Thumbs.db

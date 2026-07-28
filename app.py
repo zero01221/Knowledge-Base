@@ -1,10 +1,51 @@
 import time
 import os
+import http.server
+import mimetypes
+import socketserver
+import threading
+import urllib.parse
+from functools import partial
 
 import streamlit as st
 from agent.react_agent import ReactAgent
 from utils.path_tool import get_abs_path
 from rag.vector_store import VectorStoreService
+from utils.conversation_handler import save_conversation, load_conversation, clear_conversation
+
+
+# ---------- 后台文件服务器（仅启动一次）----------
+class _UTF8FileHandler(http.server.SimpleHTTPRequestHandler):
+    """静态文件处理器：对 text/* 类型强制声明 UTF-8 编码，解决中文乱码。"""
+
+    def guess_type(self, path):
+        mime, _ = mimetypes.guess_type(path)
+        if mime and mime.startswith('text/'):
+            return mime + '; charset=utf-8'
+        return mime or 'application/octet-stream'
+
+    def log_message(self, format, *args):
+        pass  # 关闭访问日志，保持控制台整洁
+
+
+@st.cache_resource
+def _start_file_server() -> str:
+    """在 daemon 线程启动静态文件服务器，返回访问前缀 URL。
+
+    文件按需由浏览器拉取，页面上只放轻量链接，不嵌入文件内容。
+    """
+    data_path = get_abs_path('data')
+    os.makedirs(data_path, exist_ok=True)
+
+    with socketserver.TCPServer(('127.0.0.1', 0), None) as s:
+        port = s.server_address[1]
+
+    handler = partial(_UTF8FileHandler, directory=data_path)
+    server = socketserver.ThreadingTCPServer(('127.0.0.1', port), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    return f'http://127.0.0.1:{port}'
+
 
 # ---------- 页面配置 ----------
 st.set_page_config(
@@ -61,11 +102,16 @@ with st.sidebar:
             if os.path.isfile(full_path) and f.endswith(('.txt', '.pdf')):
                 kb_files.append(f)
 
-    for f in kb_files:
-        ext_icon = '📄' if f.endswith('.txt') else '📕'
-        st.write(f'{ext_icon} {f}')
-
-    if not kb_files:
+    if kb_files:
+        base_url = _start_file_server()
+        for f in kb_files:
+            ext_icon = '📄' if f.endswith('.txt') else '📕'
+            encoded_name = urllib.parse.quote(f)
+            st.markdown(
+                f'{ext_icon} <a href="{base_url}/{encoded_name}" target="_blank">{f}</a>',
+                unsafe_allow_html=True,
+            )
+    else:
         st.warning('未找到知识库文件')
 
     st.caption(f'共 {len(kb_files)} 个文件')
@@ -75,6 +121,7 @@ with st.sidebar:
     # 清空对话按钮
     if st.button('🗑️ 清空对话', use_container_width=True):
         st.session_state['messages'] = []
+        clear_conversation()
         st.rerun()
 
     st.divider()
@@ -98,7 +145,7 @@ if 'agent' not in st.session_state:
     st.session_state['agent'] = ReactAgent()
 
 if 'messages' not in st.session_state:
-    st.session_state['messages'] = []
+    st.session_state['messages'] = load_conversation()
 
 # ---------- 对话历史 ----------
 for message in st.session_state['messages']:
@@ -128,4 +175,5 @@ if prompt:
             st.write_stream(capture(res_stream, response_messages))
 
     st.session_state['messages'].append({'role': 'ai', 'content': response_messages[-1]})
+    save_conversation(st.session_state['messages'])
     st.rerun()
